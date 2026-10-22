@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+## 0.1.1 (2026-10-23)
+
+- Add shared offline evidence validation with mandatory target identity.
+- Normalize owned JSON documents without freezing caller keys; support consumers without encode/decode roundtrips.
+
 ## 0.1.0 (2026-10-22)
 
 - Centralize batch completion, cancellation priority and presentation failures; close result registration before finalization and preserve immutable summaries.

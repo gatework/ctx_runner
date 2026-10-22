@@ -15,6 +15,6 @@ Gem::Specification.new do |spec|
   spec.files = Dir.chdir(__dir__) { Dir["lib/**/*.rb", "examples/**/*.rb", "docs/**/*.md", "README*.md", "CHANGELOG.md", "LICENSE"].sort }
   spec.require_paths = [ "lib" ]
   spec.add_dependency "ctx_parser", "~> 0.2", ">= 0.2.6"
-  spec.add_dependency "ctx_driver", "~> 0.2", ">= 0.2.5"
-  %w[digest json time tempfile fileutils].each { |name| spec.add_dependency name }
+  spec.add_dependency "ctx_driver", "~> 0.2", ">= 0.2.6"
+  %w[digest ipaddr json time tempfile fileutils].each { |name| spec.add_dependency name }
 end

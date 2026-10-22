@@ -66,20 +66,15 @@ module CtxRunner
       # 先保存未完成检查点；文本发布或最终提交失败都不能留下成功摘要。
       checkpoint = summary.merge(status: interrupted ? :interrupted : :incomplete,
         report_error: report_error || :report_finalization_unconfirmed)
-      checkpoint("summary.json", checkpoint)
+      checkpoint_body = JSON.pretty_generate(checkpoint) + "\n"
+      publish_checkpoint("summary.json", checkpoint_body)
       publish("summary.txt", yield(summary))
-      finalize("summary.json", summary, checkpoint: checkpoint)
+      commit_summary("summary.json", summary, checkpoint: checkpoint, checkpoint_body: checkpoint_body)
     end
 
     # 新一轮发布必须先撤销旧完成结论；非局部退出也不能绕过这条边界。
     def checkpoint(relative, value)
-      relative = checked_relative(relative)
-      validated = true
-      published = false
-      publish(relative, JSON.pretty_generate(serializable(value)) + "\n")
-      published = true
-    ensure
-      invalidate_completed_summary(relative: relative) if validated && !published
+      publish_checkpoint(relative, JSON.pretty_generate(serializable(value)) + "\n")
     end
 
     # 领域报告正文完成后提交最终状态；取消和提交后失败共用恢复协议。
@@ -87,10 +82,24 @@ module CtxRunner
       relative = checked_relative(relative)
       summary = CtxParser::Immutable.copy(serializable(summary))
       checkpoint = CtxParser::Immutable.copy(serializable(checkpoint))
-      checkpoint_body = JSON.pretty_generate(checkpoint) + "\n"
+      commit_summary(relative, summary, checkpoint: checkpoint, checkpoint_body: JSON.pretty_generate(checkpoint) + "\n")
+    end
+
+    def publish_checkpoint(relative, body)
+      relative = checked_relative(relative)
+      validated = true
+      published = false
+      publish(relative, body)
+      published = true
+    ensure
+      invalidate_completed_summary(relative: relative) if validated && !published
+    end
+    private :publish_checkpoint
+
+    def commit_summary(relative, summary, checkpoint:, checkpoint_body:)
       finalized = false
       begin
-        publish(relative, JSON.pretty_generate(serializable(summary)) + "\n")
+        publish(relative, JSON.pretty_generate(summary) + "\n")
         finalized = true
       rescue Error => error
         # 未替换时原检查点仍安全，不做可能破坏它的多余恢复写入。
@@ -98,7 +107,7 @@ module CtxRunner
         finalized = true
         raise
       rescue Interrupt
-        restore_checkpoint(JSON.pretty_generate(serializable(checkpoint.merge(status: :interrupted))) + "\n", relative: relative)
+        restore_checkpoint(JSON.pretty_generate(checkpoint.merge(status: :interrupted)) + "\n", relative: relative)
         finalized = true
         raise
       ensure
@@ -107,6 +116,7 @@ module CtxRunner
       end
       summary
     end
+    private :commit_summary
 
     # 每次发送配置前后发布检查点；失败由执行器停止后续写入。
     def write_execution(state)
