@@ -4,7 +4,7 @@ require "json"
 require "time"
 require "tempfile"
 require "fileutils"
-require "ctx_parser/immutable"
+require_relative "document"
 
 module CtxRunner
   # 持有私有证据批次，统一检查点、发布和失败恢复；领域只提供展示内容。
@@ -18,7 +18,7 @@ module CtxRunner
       # 保留安全的发布阶段与提交状态，不携带底层异常正文。
       def initialize(relative:, phase:, committed:)
         @relative, @phase, @committed = relative.dup.freeze, phase, committed
-        super("报告写入失败：#{relative}；阶段 #{phase}；#{committed ? '已替换，收尾未确认' : '尚未替换'}")
+        super("Report publication failed: #{relative}; phase #{phase}; #{committed ? 'replaced; finalization unconfirmed' : 'not replaced'}")
       end
 
       # 区分原子替换已完成与目录同步尚未确认。
@@ -33,7 +33,7 @@ module CtxRunner
       prepare_directory(root)
       stat = File.lstat(root)
       unless stat.directory? && (stat.mode & 0o077).zero?
-        raise ArgumentError, "报告根目录须为真实私有目录，权限0700；请设置独立目录并检查 chmod 0700"
+        raise ArgumentError, "Report root must be a real private directory with mode 0700; use a dedicated directory and check chmod 0700"
       end
       stem = Time.now.utc.strftime("%Y-%m-%d_%H-%M-%S")
       sequence = 0
@@ -51,46 +51,55 @@ module CtxRunner
     def finish(results, interrupted: false, requested: [], report_error: nil, execution_error: nil, output_error: nil, review: nil)
       raise ArgumentError, "Report requires a presentation block" unless block_given?
       @recovery_failed = false
-      # 按地址索引一次，避免大批次逐个扫描所有已完成结果。
-      completed_hosts = results.to_h { |result| [ result.fetch(:device).fetch("host"), true ] }
-      pending = requested.reject { |device| completed_hosts.key?(device.fetch("host")) }
-      complete = !report_error && !execution_error && !output_error && pending.empty? && results.any? && results.all? { |r| r[:status] == :complete && r[:report_saved] != false }
-      summary = { status: interrupted ? :interrupted : (complete ? :complete : :incomplete),
-        total: [ requested.size, results.size ].max, completed: results.size, pending: pending, counts: results.map { |r| r[:status] }.tally, devices: results,
-        directory: directory, evidence_only: true }
-      summary[:review] = review if review
-      summary[:report_error] = report_error if report_error
-      summary[:execution_error] = execution_error if execution_error
-      summary[:output_error] = output_error if output_error
-      summary = CtxParser::Immutable.copy(serializable(summary))
-      # 先保存未完成检查点；文本发布或最终提交失败都不能留下成功摘要。
-      checkpoint = summary.merge(status: interrupted ? :interrupted : :incomplete,
-        report_error: report_error || :report_finalization_unconfirmed)
-      checkpoint_body = JSON.pretty_generate(checkpoint) + "\n"
-      publish_checkpoint("summary.json", checkpoint_body)
+      summary = checkpoint = nil
+      # 转换和编码也属于发布；失败或取消不能让上一轮完成结论继续生效。
+      checkpoint_body = publish_checkpoint("summary.json") do
+        # 按地址索引一次，避免大批次逐个扫描所有已完成结果。
+        completed_hosts = results.to_h { |result| [ result.fetch(:device).fetch("host"), true ] }
+        pending = requested.reject { |device| completed_hosts.key?(device.fetch("host")) }
+        complete = !report_error && !execution_error && !output_error && pending.empty? && results.any? && results.all? { |r| r[:status] == :complete && r[:report_saved] != false }
+        summary = { status: interrupted ? :interrupted : (complete ? :complete : :incomplete),
+          total: [ requested.size, results.size ].max, completed: results.size, pending: pending, counts: results.map { |r| r[:status] }.tally, devices: results,
+          directory: directory, evidence_only: true }
+        summary[:review] = review if review
+        summary[:report_error] = report_error if report_error
+        summary[:execution_error] = execution_error if execution_error
+        summary[:output_error] = output_error if output_error
+        summary = Document.call(summary)
+        # 检查点共享已固定的证据；不重复转换，也不重新读取调用方对象。
+        checkpoint = summary.merge("status" => interrupted ? "interrupted" : "incomplete",
+          "report_error" => summary["report_error"] || "report_finalization_unconfirmed").freeze
+        document_body(checkpoint)
+      end
       publish("summary.txt", yield(summary))
       commit_summary("summary.json", summary, checkpoint: checkpoint, checkpoint_body: checkpoint_body)
     end
 
     # 新一轮发布必须先撤销旧完成结论；非局部退出也不能绕过这条边界。
     def checkpoint(relative, value)
-      publish_checkpoint(relative, JSON.pretty_generate(serializable(value)) + "\n")
+      publish_checkpoint(relative) { document_body(checkpoint_document(value)) }
     end
 
     # 领域报告正文完成后提交最终状态；取消和提交后失败共用恢复协议。
     def finalize(relative, summary, checkpoint:)
       relative = checked_relative(relative)
-      summary = CtxParser::Immutable.copy(serializable(summary))
-      checkpoint = CtxParser::Immutable.copy(serializable(checkpoint))
-      commit_summary(relative, summary, checkpoint: checkpoint, checkpoint_body: JSON.pretty_generate(checkpoint) + "\n")
+      validated = true
+      summary = Document.call(summary)
+      checkpoint = checkpoint_document(checkpoint)
+      commit_summary(relative, summary, checkpoint: checkpoint, checkpoint_body: document_body(checkpoint))
+      finalized = true
+      summary
+    ensure
+      invalidate_completed_summary(relative: relative) if validated && !finalized
     end
 
-    def publish_checkpoint(relative, body)
+    def publish_checkpoint(relative)
       relative = checked_relative(relative)
       validated = true
-      published = false
+      body = yield
       publish(relative, body)
       published = true
+      body
     ensure
       invalidate_completed_summary(relative: relative) if validated && !published
     end
@@ -99,7 +108,7 @@ module CtxRunner
     def commit_summary(relative, summary, checkpoint:, checkpoint_body:)
       finalized = false
       begin
-        publish(relative, JSON.pretty_generate(summary) + "\n")
+        publish(relative, document_body(summary))
         finalized = true
       rescue Error => error
         # 未替换时原检查点仍安全，不做可能破坏它的多余恢复写入。
@@ -107,7 +116,7 @@ module CtxRunner
         finalized = true
         raise
       rescue Interrupt
-        restore_checkpoint(JSON.pretty_generate(checkpoint.merge(status: :interrupted)) + "\n", relative: relative)
+        restore_checkpoint(document_body(checkpoint.merge("status" => "interrupted")), relative: relative)
         finalized = true
         raise
       ensure
@@ -120,7 +129,7 @@ module CtxRunner
 
     # 每次发送配置前后发布检查点；失败由执行器停止后续写入。
     def write_execution(state)
-      publish("execution.json", JSON.pretty_generate(state) + "\n")
+      publish("execution.json", document_body(Document.call(state)))
     end
 
     # 恢复写入或删除受阻时，调用方须把退出码及此状态作为未确认诊断。
@@ -149,7 +158,7 @@ module CtxRunner
     def invalidate_completed_summary(relative: "summary.json")
       relative = checked_relative(relative)
       Thread.handle_interrupt(Exception => :never) do
-        saved = JSON.parse(File.read(File.join(directory, relative)))
+        saved = JSON.parse(File.read(File.join(directory, relative)), max_nesting: Document::MAX_DEPTH + 1)
         discard_summary(relative: relative) if saved["status"] == "complete"
       end
     rescue Errno::ENOENT
@@ -176,22 +185,13 @@ module CtxRunner
     # 存储拒绝恢复时尽力移除不可信摘要，不删除已获得的设备事实。
     def discard_summary(relative: "summary.json")
       relative = checked_relative(relative)
-      File.unlink(File.join(directory, relative))
+      target = File.join(directory, relative)
+      File.unlink(target)
+      sync_directory(File.dirname(target))
     rescue Errno::ENOENT
       nil
-    rescue SystemCallError
+    rescue SystemCallError, IOError, NotImplementedError
       @recovery_failed = true
-    end
-
-    # Time 使用 ISO-8601，递归转换 Data 只发生在显式持久化边界。
-    def serializable(value)
-      case value
-      when Time then value.iso8601(6)
-      when Data then serializable(value.to_h)
-      when Hash then value.transform_values { |item| serializable(item) }
-      when Array then value.map { |item| serializable(item) }
-      else value
-      end
     end
 
     # 临时文件与目标在同一目录，写入失败不发布半份报告。
@@ -217,6 +217,18 @@ module CtxRunner
       raise @error_class.new(relative: relative, phase: phase, committed: committed), cause: nil
     end
     private
+
+    # 恢复只能保留未完成事实，不能把完成摘要当作安全检查点。
+    def checkpoint_document(value)
+      document = Document.call(value)
+      unless document.is_a?(Hash) && document["status"].is_a?(String) && !document["status"].empty? && document["status"] != "complete"
+        raise ArgumentError, "Checkpoint requires a non-complete status"
+      end
+      document
+    end
+
+    # 深度由 Document 校验；编码阶段不再施加 JSON 默认的更低嵌套限制。
+    def document_body(document) = JSON.pretty_generate(document, max_nesting: false) + "\n"
 
     # 发布、恢复与删除使用同一条路径契约；拒绝路径时不能执行收尾副作用。
     def checked_relative(relative)

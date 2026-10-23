@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.0 (2026-10-23)
+
+- Breaking: report presenters, completion callbacks and progress callbacks now receive immutable string-keyed documents; remove Report#serializable and migrate consumers.
+- Validate summary and execution documents before publication, remove stale completion after conversion failures, and confirm recovery checkpoint durability.
+- Preserve collected evidence and the original exit when final progress abandons a batch without replaying progress.
+- Use English evidence validation and report publication diagnostics.
+
 ## 0.1.1 (2026-10-23)
 
 - Add shared offline evidence validation with mandatory target identity.

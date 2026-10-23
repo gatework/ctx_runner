@@ -2,6 +2,7 @@
 
 require "ctx_parser/immutable"
 require "ctx_driver/failure"
+require_relative "document"
 
 module CtxRunner
   # 批量采集的交付账本；调度器负责并发与回收，领域块只返回设备快照。
@@ -53,7 +54,7 @@ module CtxRunner
       elsif failure || finalization_error
         :failed
       else
-        summary[:status] == :complete ? :complete : :incomplete
+        summary.fetch("status") == "complete" ? :complete : :incomplete
       end
       completion = Completion.new(status: status, summary: summary, failure: failure, finalization_error: finalization_error,
         recovery_failed: @report.respond_to?(:recovery_failed?) && @report.recovery_failed?)
@@ -99,7 +100,7 @@ module CtxRunner
       @report.write(CtxParser::Immutable.copy(result), snapshot: snapshot)
       @lock.synchronize { result[:report_saved] = true }
       saved = CtxParser::Immutable.copy(result)
-      @progress.result(saved)
+      @progress.result(Document.call(saved))
       saved
     end
 
@@ -112,8 +113,8 @@ module CtxRunner
       snapshot = results
       options = { interrupted: interrupted, requested: @requested, report_error: report_error, execution_error: execution_error }
       summary = @report.finish(snapshot, **options, output_error: @progress.output_error)
-      @progress.finish(summary)
-      if @progress.output_error && !summary[:output_error]
+      finish_progress(summary, snapshot, options)
+      if @progress.output_error && !summary["output_error"]
         summary = @report.finish(snapshot, **options, output_error: @progress.output_error)
       end
       summary
@@ -123,12 +124,32 @@ module CtxRunner
 
     private
 
+    # 终端收尾退出时只补写报告；保留已完成事实及原退出，不重放进度或采集。
+    def finish_progress(summary, snapshot, options)
+      recovery = { interrupted: true, output_error: summary["output_error"] }
+      @progress.finish(summary)
+      completed = true
+    rescue StandardError, LoadError => error
+      recovery = { output_error: { error_type: error.class.name } }
+      raise
+    ensure
+      unless completed
+        begin
+          @report.finish(snapshot, **options, **recovery)
+        rescue StandardError, LoadError, Interrupt
+          nil
+        end
+      end
+    end
+
     def settle(options)
       [ CtxParser::Immutable.copy(finish(**options)), nil ]
     rescue Interrupt
       options[:interrupted] = true
       begin
-        [ CtxParser::Immutable.copy(finish(**options)), nil ]
+        # 取消后的终端不可再次调用；仅确认中断报告的交付状态。
+        summary = @report.finish(results, **options, requested: @requested, output_error: @progress.output_error)
+        [ CtxParser::Immutable.copy(summary), nil ]
       rescue StandardError, LoadError, Interrupt => error
         [ nil, diagnostic(error) ]
       end
