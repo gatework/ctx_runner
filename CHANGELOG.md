@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.1 (2026-10-24)
+
+- Leave ctx_parser and ctx_driver dependencies unconstrained in the gemspec; retain the current collection, immutable report and execution contracts.
+
 ## 0.2.0 (2026-10-23)
 
 - Breaking: report presenters, completion callbacks and progress callbacks now receive immutable string-keyed documents; remove Report#serializable and migrate consumers.
