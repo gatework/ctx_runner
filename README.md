@@ -6,6 +6,7 @@
 
 | 对象 | 负责的业务 |
 | --- | --- |
+| `SessionScope` | 当前线程内一次会话交付、未完成事实和回调撤销 |
 | `Collection` | 一次连接器交付、阶段诊断、禁止重复执行 |
 | `Query` | 单命令读取解析、共享视图、失败与来源绑定 |
 | `Observation` | 事实外壳、可用性、时间类型、深度快照及安全展示 |
@@ -37,7 +38,9 @@ end
 
 领域 Profile 实现 `parse_many(names, body, complete:, command:)`；不可用投影接收 `(name, capture, failure)`。一次 Query 对应一条命令，多个视图共享同一份 Capture。
 
-`Collection.new(strict: true)` 对连接器零次/重复回调抛出 ArgumentError，兼容严格宿主契约；默认记录 session_not_opened/session_reentered。连接关闭错误不会覆盖已完成的领域事实。借用会话直接使用 Reader/Query，无需再进入 Collection。
+`Collection.new(strict: true)` 对连接器零次/重复回调抛出 ArgumentError，兼容严格宿主契约；默认记录 session_not_opened/session_reentered。交付块未正常完成但异常被连接器吞掉时记录 session_incomplete；跨线程交付记录 session_out_of_scope，并拒绝执行领域块。连接关闭错误不会覆盖已完成的领域事实或先前交付故障。借用会话直接使用 Reader/Query，无需再进入 Collection。
+
+Collection 与 Execution 共用 `SessionScope`。会话必须由创建流程的线程同步交付；并行调度应在每个设备任务内部创建流程。重复交付的异常即使被提供方吞掉，流程仍不能报告完成；所有者退出后保留的回调立即失效。作用域不持有或关闭会话，连接清理仍由连接器负责。跨模块职责、业务原子边界与领域拆分见 [模块设计](docs/module-boundaries.md)。
 
 `Batch.new(report:, progress:, requested:)` 接收报告和进度协作者。`collect(device) { snapshot }` 返回不含原始配置的设备摘要；`run(present:) { ... }` 包住调度和领域后处理；块必须在返回或抛错前回收全部任务。Runner 统一取消、执行失败、报告及输出失败，返回不可变 Completion（status、summary、安全 failure、finalization_error、recovery_failed）。取消优先于收尾失败，展示失败只补写报告、不重采或重复展示。进入收尾即关闭结果登记，run 不可重放。CLI 将 complete/incomplete/failed/interrupted 映射到 0/1/2/130。`finish` 是内部交付步骤；调度和网络资源仍由宿主拥有。
 

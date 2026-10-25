@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "ctx_driver/failure"
+require_relative "session_scope"
 
 module CtxRunner
   # 约束一次连接器交付，不接管连接或操作租约；已取得的事实由领域块保留。
@@ -32,26 +33,23 @@ module CtxRunner
     private
 
     def acquire(connector)
-      yielded = false
-      active = true
+      scope = SessionScope.new
       connector.open do |session|
-        raise IOError, "Session provider scope has ended" unless active
-        if yielded
-          contract_failure(:session_reentered)
-          next
+        delivered = scope.deliver do
+          @stage = :collect
+          yield session
+          @stage = :close
         end
-        yielded = true
-        @stage = :collect
-        yield session
-        @stage = :close
+        contract_failure(scope.failure) unless delivered
       end
-      contract_failure(:session_not_opened) unless yielded
+      scope.close
+      contract_failure(scope.failure) if scope.failure
     rescue StandardError => error
       raise unless CtxDriver::Failure.connection_error?(error, connector)
       details = CtxDriver::Failure.details(error, fallback: :connection_failed, stage: stage)
-      @failure = (stage == :close ? details.merge(code: :session_close_failed) : details).freeze
+      @failure ||= (stage == :close ? details.merge(code: :session_close_failed) : details).freeze
     ensure
-      active = false
+      scope&.close
     end
 
     def contract_failure(code)

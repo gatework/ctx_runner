@@ -3,6 +3,7 @@
 require "ctx_parser/immutable"
 require "ctx_driver/failure"
 require_relative "fingerprint"
+require_relative "session_scope"
 
 module CtxRunner
   # 只执行已确认的单项领域变更；日志、设备效果与配置验收分别记账。
@@ -45,24 +46,24 @@ module CtxRunner
 
     # 保存意图先于连接；回调次数和完成状态不依赖连接器返回值。
     def perform
-      opened = verified = finished = recorded = false
-      active = true
+      finished = recorded = false
+      scope = SessionScope.new
       save
       yield lambda { |session|
-        raise IOError, "Session provider scope has ended" unless active
-        raise IOError, "Session callback repeated" if opened
-        opened = true
-        before = CtxParser::Immutable.copy(session.read_configuration)
-        unless Fingerprint.call(before) == @plan["expected_config_sha256"] && @change.eligible?(before)
-          raise ArgumentError, "Configuration changed or preconditions failed"
+        delivered = scope.deliver do
+          before = CtxParser::Immutable.copy(session.read_configuration)
+          unless Fingerprint.call(before) == @plan["expected_config_sha256"] && @change.eligible?(before)
+            raise ArgumentError, "Configuration changed or preconditions failed"
+          end
+          @commands.each_with_index { |command, index| execute(session, command, index) }
+          after = CtxParser::Immutable.copy(session.read_configuration)
+          raise IOError, "Configuration verification failed" unless @change.satisfied?(after, before: before)
+          @state["observed_config_sha256"] = Fingerprint.call(after)
         end
-        @commands.each_with_index { |command, index| execute(session, command, index) }
-        after = CtxParser::Immutable.copy(session.read_configuration)
-        raise IOError, "Configuration verification failed" unless @change.satisfied?(after, before: before)
-        @state["observed_config_sha256"] = Fingerprint.call(after)
-        verified = true
+        raise IOError, "Invalid session delivery" unless delivered
       }
-      raise IOError, "Session did not verify the configuration" unless verified
+      scope.close
+      raise IOError, "Session did not verify the configuration" if scope.failure
       @state["status"] = "configuration_verified"
       save
       finished = true
@@ -73,7 +74,7 @@ module CtxRunner
       record_failure(type)
       raise
     ensure
-      active = false
+      scope&.close
       # 非局部退出与线程取消也不能留下可重放的成功意图。
       record_failure("aborted") unless finished || recorded
     end

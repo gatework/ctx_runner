@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.2 (2026-10-25)
+
+- Share a single session delivery scope between collection and controlled execution; reject swallowed delivery violations, unfinished operations and cross-thread callbacks without replaying device actions.
+- Preserve the first collection delivery failure when connection cleanup also fails; document module ownership and business operation boundaries.
+
 ## 0.2.1 (2026-10-24)
 
 - Leave ctx_parser and ctx_driver dependencies unconstrained in the gemspec; retain the current collection, immutable report and execution contracts.
