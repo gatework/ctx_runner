@@ -45,6 +45,7 @@ module CtxRunner
       contract_failure(scope.failure) if scope.failure
     rescue StandardError => error
       raise unless CtxDriver::Failure.connection_error?(error, connector)
+      contract_failure(scope.failure) if scope&.failure && stage != :connect
       details = CtxDriver::Failure.details(error, fallback: :connection_failed, stage: stage)
       @failure ||= (stage == :close ? details.merge(code: :session_close_failed) : details).freeze
     ensure

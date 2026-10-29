@@ -87,6 +87,21 @@ RSpec.describe CtxRunner::Collection do
     expect(run.failure).to include(code: :session_reentered)
   end
 
+  it "retains an unfinished callback when its owner swallows it and closing also fails" do
+    owner = Object.new
+    owner.define_singleton_method(:open) do |&operation|
+      begin
+        operation.call(:session)
+      rescue IOError
+        nil
+      end
+      raise IOError, "private close failure"
+    end
+    run = described_class.new.open(owner) { raise IOError, "private operation failure" }
+    expect(run.failure).to include(code: :session_incomplete, stage: :collect)
+    expect(run.failure.to_s).not_to include("private")
+  end
+
   it "does not run device operations on a provider's foreign thread" do
     owner = Object.new
     owner.define_singleton_method(:open) { |&operation| Thread.new { operation.call(:session) }.value }

@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
 require "ctx_parser/immutable"
+require "ctx_parser/commands"
 require "ctx_driver/failure"
 require_relative "fingerprint"
 require_relative "session_scope"
+require_relative "evidence"
 
 module CtxRunner
   # 只执行已确认的单项领域变更；日志、设备效果与配置验收分别记账。
@@ -19,11 +21,12 @@ module CtxRunner
         raise ArgumentError, "Execution requires a typed change and journal"
       end
       @commands = CtxParser::Immutable.copy(change.commands)
-      unless @commands.is_a?(Array) && @commands.any? && @commands.all? { |command| command.is_a?(String) && !command.strip.empty? && !/[\x00-\x1f\x7f]/.match?(command) }
+      unless @commands.is_a?(Array) && @commands.any?
         raise ArgumentError, "Change commands must be individual lines"
       end
+      @commands.each { |command| CtxParser::Commands.command_text(command) }
       @change, @journal = change, journal
-      @state = { "status" => "confirmed", "device" => @plan["device"], "plan_sha256" => plan_sha256.dup.freeze,
+      @state = { "schema_version" => Evidence::VERSION, "kind" => "execution", "status" => "confirmed", "device" => @plan["device"], "plan_sha256" => plan_sha256.dup.freeze,
         "expected_config_sha256" => @plan["expected_config_sha256"], "commands" => @commands, "steps" => [] }
       @state["plan_item"] = CtxParser::Immutable.copy(item) if item
       @started = @used = @journal_failed = false

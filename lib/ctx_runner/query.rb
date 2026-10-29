@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "ctx_parser/immutable"
+require "ctx_parser/commands"
 require "ctx_driver/failure"
 
 module CtxRunner
@@ -16,7 +17,7 @@ module CtxRunner
         raise ArgumentError, "Query views must be unique symbols"
       end
       names = CtxParser::Immutable.copy(names)
-      command = CtxParser::Immutable.copy(command)
+      command = CtxParser::Commands.command_text(command)
       capture = @reader.read(command)
       failure = capture.failure
       if capture.success?

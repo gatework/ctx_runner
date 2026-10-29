@@ -5,6 +5,7 @@ require "time"
 require "tempfile"
 require "fileutils"
 require_relative "document"
+require_relative "evidence"
 
 module CtxRunner
   # 持有私有证据批次，统一检查点、发布和失败恢复；领域只提供展示内容。
@@ -65,7 +66,7 @@ module CtxRunner
         summary[:report_error] = report_error if report_error
         summary[:execution_error] = execution_error if execution_error
         summary[:output_error] = output_error if output_error
-        summary = Document.call(summary)
+        summary = Evidence.wrap(summary, kind: "batch")
         # 检查点共享已固定的证据；不重复转换，也不重新读取调用方对象。
         checkpoint = summary.merge("status" => interrupted ? "interrupted" : "incomplete",
           "report_error" => summary["report_error"] || "report_finalization_unconfirmed").freeze

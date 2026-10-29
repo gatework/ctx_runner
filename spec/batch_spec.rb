@@ -12,10 +12,10 @@ RSpec.describe CtxRunner::Batch do
   it "retains collected facts when evidence publication fails" do
     allow(report).to receive(:write).and_raise(IOError)
     observation = Struct.new(:status, :records, :issues).new(:complete, [ { name: "test" } ], [])
-    snapshot = Struct.new(:observations).new({ collection: observation, interfaces: observation })
+    snapshot = Struct.new(:observations, :collection_status).new({ interfaces: observation }, :complete)
     expect { batch.collect(device) { snapshot } }.to raise_error(IOError)
     expect(batch.results).to contain_exactly(include(device: device, status: :complete, report_saved: false,
-      dimensions: { collection: { status: :complete, records: 1, issues: [] }, interfaces: { status: :complete, records: 1, issues: [] } }))
+      dimensions: { interfaces: { status: :complete, records: 1, issues: [] } }))
   end
 
   it "isolates a device failure and reports a saved result" do

@@ -38,7 +38,7 @@ end
 
 领域 Profile 实现 `parse_many(names, body, complete:, command:)`；不可用投影接收 `(name, capture, failure)`。一次 Query 对应一条命令，多个视图共享同一份 Capture。
 
-`Collection.new` 统一记录 session_not_opened/session_reentered，保留首次失败且不重放；strict: 参数已移除。批次快照统一提供 observations Ruby 成员，输出文档仍保留 dimensions 字段。交付块未正常完成但异常被连接器吞掉时记录 session_incomplete；跨线程交付记录 session_out_of_scope，并拒绝执行领域块。连接关闭错误不会覆盖已完成的领域事实或先前交付故障。借用会话直接使用 Reader/Query，无需再进入 Collection。
+`Collection.new` 统一记录 session_not_opened/session_reentered，保留首次失败且不重放；strict: 参数已移除。批次快照统一提供 observations Ruby 成员，文档统一使用 observations，采集结论独立为 collection_status，不再生成 :collection 伪观测。交付块未正常完成但异常被连接器吞掉时记录 session_incomplete；跨线程交付记录 session_out_of_scope，并拒绝执行领域块。连接关闭错误不会覆盖已完成的领域事实或先前交付故障。借用会话直接使用 Reader/Query，无需再进入 Collection。
 
 Collection 与 Execution 共用 `SessionScope`。会话必须由创建流程的线程同步交付；并行调度应在每个设备任务内部创建流程。重复交付的异常即使被提供方吞掉，流程仍不能报告完成；所有者退出后保留的回调立即失效。作用域不持有或关闭会话，连接清理仍由连接器负责。跨模块职责、业务原子边界与领域拆分见 [模块设计](docs/module-boundaries.md)。
 
@@ -68,3 +68,5 @@ ruby script/verify_package.rb pkg/ctx_runner-0.1.0.gem
 默认 rake 运行 RSpec、RuboCop 和离线示例。CI 沿用 ctx_parser 的 Ruby 4.0.6 / Linux、macOS 矩阵和固定 action 提交。源码联调在消费仓库显式设置 `CTX_RUNNER_PATH=../ctx_runner`；普通验证使用已安装依赖。首次发版前须先构建安装 runner 候选包再验证消费包。
 
 首个版本为 0.1.0。发布流程复用 CI 制品，验证 GitHub Release 与 RubyGems 下载字节。
+
+模块契约、破坏性迁移与版本矩阵见 [契约迁移](docs/contracts-2026-10-29.md)。

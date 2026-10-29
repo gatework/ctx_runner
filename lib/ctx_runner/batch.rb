@@ -90,7 +90,7 @@ module CtxRunner
         dimensions = snapshot.observations.transform_values do |value|
           { status: value.status, records: value.records.size, issues: value.issues.map { |issue| issue[:code] }.uniq }
         end
-        result = { device: device, status: snapshot.observations.fetch(:collection).status, dimensions: dimensions }
+        result = { device: device, status: snapshot.collection_status, dimensions: dimensions }
       rescue StandardError => error
         result = { device: device, status: :failed, error: CtxDriver::Failure.code(error, :collection_failed), dimensions: {} }
       end

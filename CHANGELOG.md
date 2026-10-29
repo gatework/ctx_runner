@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.4.0 (2026-10-29)
+
+- Add composed Snapshot and public Target contracts, independent collection status, and typed UTC times. Empty requests remain not_requested.
+- Share observation scopes and acquisition times, requiring evidence for not_applicable. Preserve unfinished callback failures when cleanup also fails.
+- Version collection, batch, change plan, review and execution documents with schema 3 and explicit kinds; reject older reports and plans.
+
 ## 0.3.0 (2026-10-29)
 
 - Remove `Collection.new(strict:)`: provider contract failures consistently return structured diagnostics without replay and preserve the first failure. Batch consumers now expose `snapshot.observations`.
