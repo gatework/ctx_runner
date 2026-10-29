@@ -31,10 +31,15 @@ RSpec.describe CtxRunner::Collection do
     expect(run.failure.to_s).not_to include("private")
   end
 
-  it "preserves strict provider contracts without swallowing programming errors" do
-    expect { described_class.new(strict: true).open(connector(count: 0)) { } }.to raise_error(ArgumentError)
+  it "uses one provider contract without swallowing programming errors" do
+    expect(described_class.new.open(connector(count: 0)) { }.failure).to include(code: :session_not_opened)
     expect { described_class.new.open(connector) { raise TypeError } }.to raise_error(TypeError)
     expect { described_class.new.open(connector) { raise Interrupt } }.to raise_error(Interrupt)
+  end
+
+  it "preserves the first provider failure even if closing also fails" do
+    run = described_class.new.open(connector(count: 2, close_error: true)) { }
+    expect(run.failure).to include(code: :session_reentered)
   end
 
   it "revokes callbacks after the connection owner returns" do
@@ -47,7 +52,7 @@ RSpec.describe CtxRunner::Collection do
     expect(calls).to be_empty
   end
 
-  it "retains strict contract violations even when the provider rescues them" do
+  it "retains provider contract violations even when the provider rescues them" do
     owner = Object.new
     owner.define_singleton_method(:open) do |&operation|
       operation.call(:session)
@@ -58,7 +63,8 @@ RSpec.describe CtxRunner::Collection do
       end
     end
     calls = []
-    expect { described_class.new(strict: true).open(owner) { |session| calls << session } }.to raise_error(ArgumentError)
+    run = described_class.new.open(owner) { |session| calls << session }
+    expect(run.failure).to include(code: :session_reentered)
     expect(calls).to eq([ :session ])
   end
 

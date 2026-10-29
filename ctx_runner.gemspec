@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   # 明确限定发布内容；设备来源、凭据与本地测试产物不进入包。
   spec.files = Dir.chdir(__dir__) { Dir["lib/**/*.rb", "examples/**/*.rb", "docs/**/*.md", "README*.md", "CHANGELOG.md", "LICENSE"].sort }
   spec.require_paths = [ "lib" ]
-  spec.add_dependency "ctx_parser"
-  spec.add_dependency "ctx_driver"
+  spec.add_dependency "ctx_parser", ">= 0.3.0", "< 0.4"
+  spec.add_dependency "ctx_driver", ">= 0.3.0", "< 0.4"
   %w[digest ipaddr json time tempfile fileutils].each { |name| spec.add_dependency name }
 end

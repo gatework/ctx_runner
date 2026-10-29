@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-10-29)
+
+- Remove `Collection.new(strict:)`: provider contract failures consistently return structured diagnostics without replay and preserve the first failure. Batch consumers now expose `snapshot.observations`.
+
 ## 0.2.2 (2026-10-25)
 
 - Share a single session delivery scope between collection and controlled execution; reject swallowed delivery violations, unfinished operations and cross-thread callbacks without replaying device actions.

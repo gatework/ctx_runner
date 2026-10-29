@@ -38,7 +38,7 @@ end
 
 领域 Profile 实现 `parse_many(names, body, complete:, command:)`；不可用投影接收 `(name, capture, failure)`。一次 Query 对应一条命令，多个视图共享同一份 Capture。
 
-`Collection.new(strict: true)` 对连接器零次/重复回调抛出 ArgumentError，兼容严格宿主契约；默认记录 session_not_opened/session_reentered。交付块未正常完成但异常被连接器吞掉时记录 session_incomplete；跨线程交付记录 session_out_of_scope，并拒绝执行领域块。连接关闭错误不会覆盖已完成的领域事实或先前交付故障。借用会话直接使用 Reader/Query，无需再进入 Collection。
+`Collection.new` 统一记录 session_not_opened/session_reentered，保留首次失败且不重放；strict: 参数已移除。批次快照统一提供 observations Ruby 成员，输出文档仍保留 dimensions 字段。交付块未正常完成但异常被连接器吞掉时记录 session_incomplete；跨线程交付记录 session_out_of_scope，并拒绝执行领域块。连接关闭错误不会覆盖已完成的领域事实或先前交付故障。借用会话直接使用 Reader/Query，无需再进入 Collection。
 
 Collection 与 Execution 共用 `SessionScope`。会话必须由创建流程的线程同步交付；并行调度应在每个设备任务内部创建流程。重复交付的异常即使被提供方吞掉，流程仍不能报告完成；所有者退出后保留的回调立即失效。作用域不持有或关闭会话，连接清理仍由连接器负责。跨模块职责、业务原子边界与领域拆分见 [模块设计](docs/module-boundaries.md)。
 

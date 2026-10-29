@@ -8,9 +8,8 @@ module CtxRunner
   class Collection
     attr_reader :failure, :stage
 
-    def initialize(strict: false)
-      raise ArgumentError, "Strict session contract must be boolean" unless [ true, false ].include?(strict)
-      @strict, @used = strict, false
+    def initialize
+      @used = false
       @stage = :connect
     end
 
@@ -53,7 +52,6 @@ module CtxRunner
     end
 
     def contract_failure(code)
-      raise ArgumentError, "Connector must provide one session" if @strict
       @failure ||= { code: code, stage: stage }.freeze
     end
   end
