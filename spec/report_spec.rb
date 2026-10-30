@@ -12,12 +12,12 @@ RSpec.describe CtxRunner::Report do
     end
   end
 
-  let(:result) { { device: { "host" => "192.0.2.1", "name" => "device" }, status: :complete, report_saved: true } }
+  let(:result) { { target: { "host" => "192.0.2.1", "name" => "target" }, status: :complete, report_saved: true } }
 
   it "publishes private evidence before completing the batch" do
     report = described_class.new(@root)
     report.publish("evidence.json", "{}\n")
-    summary = report.finish([ result ], requested: [ result[:device] ]) { "Evidence only\n" }
+    summary = report.finish([ result ], requested: [ result[:target] ]) { "Evidence only\n" }
     expect(summary.fetch("status")).to eq("complete")
     expect(JSON.parse(File.read(File.join(report.directory, "summary.json")))["status"]).to eq("complete")
     expect(File.stat(report.directory).mode & 0o777).to eq(0o700)
@@ -33,8 +33,15 @@ RSpec.describe CtxRunner::Report do
 
   it "retains pending targets and never completes an empty batch" do
     report = described_class.new(@root)
-    summary = report.finish([], requested: [ result[:device] ]) { "pending" }
-    expect(summary).to include("status" => "incomplete", "pending" => [ result[:device] ])
+    summary = report.finish([], requested: [ result[:target] ]) { "pending" }
+    expect(summary).to include("status" => "incomplete", "pending" => [ result[:target] ])
+  end
+
+  it "does not let a result for the same host complete a different target identity" do
+    report = described_class.new(@root)
+    requested = result[:target].merge("platform" => "h3c", "id" => 7)
+    summary = report.finish([ result ], requested: [ requested ]) { "pending" }
+    expect(summary).to include("status" => "incomplete", "pending" => [ requested ])
   end
 
   it "gives presentation an immutable owned summary" do
@@ -103,17 +110,17 @@ RSpec.describe CtxRunner::Report do
     seen = nil
     summary = report.finish([ original ]) do |document|
       seen = document
-      original[:device]["host"] = "changed"
+      original[:target]["host"] = "changed"
       original[:status] = :failed
-      "#{document.fetch('devices').first.fetch('device').fetch('host')} #{document.fetch('status')}"
+      "#{document.fetch('devices').first.fetch('target').fetch('host')} #{document.fetch('status')}"
     end
     expect(summary).to equal(seen)
     expect(summary).to eq(JSON.parse(File.read(File.join(report.directory, "summary.json"))))
     expect(summary.fetch("devices").first).to include("status" => "complete",
       "observation" => { "time" => "2026-10-23T00:00:00.000000Z", "state" => "complete" })
     expect(File.read(File.join(report.directory, "summary.txt"))).to eq("192.0.2.1 complete")
-    expect { summary.fetch("devices").first.fetch("device")["host"].replace("mutated") }.to raise_error(FrozenError)
-    expect(original[:device]["host"]).to eq("changed")
+    expect { summary.fetch("devices").first.fetch("target")["host"].replace("mutated") }.to raise_error(FrozenError)
+    expect(original[:target]["host"]).to eq("changed")
   end
 
   {

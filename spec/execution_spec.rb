@@ -6,7 +6,7 @@ require "ctx_runner/execution"
 RSpec.describe CtxRunner::Execution do
   let(:before) { { "value" => 1 } }
   let(:after) { { "value" => 2 } }
-  let(:plan) { { "device" => { "host" => "192.0.2.1" }, "expected_config_sha256" => CtxRunner::Fingerprint.call(before) } }
+  let(:plan) { { "target" => { "host" => "192.0.2.1" }, "expected_config_sha256" => CtxRunner::Fingerprint.call(before) } }
   let(:change) do
     Object.new.tap do |value|
       value.define_singleton_method(:commands) { [ "set value 2", "end" ] }

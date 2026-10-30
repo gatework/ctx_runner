@@ -22,7 +22,7 @@ end
 
 Dir.mktmpdir do |root|
   report = CtxRunner::Report.new(File.join(root, "execution"))
-  plan = { "device" => { "host" => "192.0.2.1" }, "expected_config_sha256" => CtxRunner::Fingerprint.call("mode" => "disabled") }
+  plan = { "target" => { "host" => "192.0.2.1" }, "expected_config_sha256" => CtxRunner::Fingerprint.call("mode" => "disabled") }
   execution = CtxRunner::Execution.new(plan: plan, change: ExampleChange.new, journal: report, plan_sha256: "a" * 64)
   result = execution.run { |operation| operation.call(ExampleSession.new) }
   raise "Unverified configuration" unless result["status"] == "configuration_verified"

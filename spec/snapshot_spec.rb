@@ -21,7 +21,7 @@ RSpec.describe CtxRunner::Snapshot do
     expect(snapshot({ bgp: observation(:bgp, :partial) }).collection_status).to eq(:partial)
     expect(snapshot({ bgp: observation(:bgp, :complete) }, issues: [ { code: :session_close_failed } ]).collection_status).to eq(:partial)
     expect(snapshot({ interfaces: observation(:interfaces, :complete), bgp: observation(:bgp, :failed) }).collection_status).to eq(:partial)
-    expect(snapshot({ bgp: observation(:bgp, :not_applicable, evidence: [ { source: :configuration } ]) }).collection_status).to eq(:complete)
+    expect(snapshot({ bgp: observation(:bgp, :not_applicable, evidence: [ { sha256: "a" * 64, bytes: 1 } ]) }).collection_status).to eq(:complete)
     expect { observation(:bgp, :not_applicable) }.to raise_error(ArgumentError)
   end
 
@@ -42,7 +42,7 @@ RSpec.describe CtxRunner::Snapshot do
     value = snapshot(target: target, observed_at: time)
     target["host"].clear
     time.localtime("-04:00")
-    expect(value.target).to eq(host: "192.0.2.1", id: "leaf")
+    expect(value.target.to_h).to eq(host: "192.0.2.1", id: "leaf")
     expect(value.observed_at.utc?).to be(true)
     expect(CtxRunner::Document.call(value)).to include("observed_at" => "2026-10-29T02:00:00.000000Z", "collection_status" => "not_requested", "observations" => {})
     expect(value.to_h).not_to have_key(:dimensions)

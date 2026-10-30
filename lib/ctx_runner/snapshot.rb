@@ -23,7 +23,7 @@ module CtxRunner
       unless issues.is_a?(Array) && issues.all? { |issue| issue.is_a?(Hash) }
         raise ArgumentError, "Snapshot issues must be hashes"
       end
-      @target = Target.snapshot(target)
+      @target = Target.coerce(target)
       @names = names.dup.freeze
       @observations = observations.to_h { |name, value| [ name, value ] }.freeze
       @observed_at = observed_at.getutc.freeze
@@ -38,10 +38,11 @@ module CtxRunner
     end
 
     def complete? = collection_status == :complete
-    def same_target?(other) = other.respond_to?(:target) && %i[host platform id].all? { |key| target[key] == other.target[key] }
+    def same_target?(other) = other.respond_to?(:target) && target.same_identity?(other.target)
+    def records(name) = observation(name).records
 
     def to_h
-      { target: target, observations: observations.transform_values(&:to_h), observed_at: observed_at,
+      { target: target.to_h, observations: observations.transform_values(&:to_h), observed_at: observed_at,
         issues: issues, collection_status: collection_status }
     end
 

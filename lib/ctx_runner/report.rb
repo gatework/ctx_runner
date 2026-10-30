@@ -55,9 +55,9 @@ module CtxRunner
       summary = checkpoint = nil
       # 转换和编码也属于发布；失败或取消不能让上一轮完成结论继续生效。
       checkpoint_body = publish_checkpoint("summary.json") do
-        # 按地址索引一次，避免大批次逐个扫描所有已完成结果。
-        completed_hosts = results.to_h { |result| [ result.fetch(:device).fetch("host"), true ] }
-        pending = requested.reject { |device| completed_hosts.key?(device.fetch("host")) }
+        # 按完整目标身份索引一次，不让同地址的其他平台或资产替代待采集目标。
+        completed_targets = results.to_h { |result| [ Target.coerce(result.fetch(:target)).identity_key, true ] }
+        pending = requested.reject { |target| completed_targets.key?(Target.coerce(target).identity_key) }
         complete = !report_error && !execution_error && !output_error && pending.empty? && results.any? && results.all? { |r| r[:status] == :complete && r[:report_saved] != false }
         summary = { status: interrupted ? :interrupted : (complete ? :complete : :incomplete),
           total: [ requested.size, results.size ].max, completed: results.size, pending: pending, counts: results.map { |r| r[:status] }.tally, devices: results,

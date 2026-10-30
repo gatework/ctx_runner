@@ -70,3 +70,7 @@ ruby script/verify_package.rb pkg/ctx_runner-0.1.0.gem
 首个版本为 0.1.0。发布流程复用 CI 制品，验证 GitHub Release 与 RubyGems 下载字节。
 
 模块契约、破坏性迁移与版本矩阵见 [契约迁移](docs/contracts-2026-10-29.md)。
+
+## Domain contract migration (2026-10-30)
+
+Adopt immutable `Target` identity values and typed observation sources; share `records(name)` and configuration session behavior. Schema 4 uses `target`, validates aggregate status and full identity, and rejects empty applicability proof. Reject duplicate/unrequested batch work and mismatched returned snapshots. Align fingerprint depth with Document. See the [schema 4 migration and module contracts](https://github.com/gatework/ctx_runner/blob/main/docs/contracts-2026-10-30.md). Regenerate old collection reports and change plans; changing only their version number is not supported.

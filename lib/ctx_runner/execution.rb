@@ -13,7 +13,7 @@ module CtxRunner
     # 领域动作负责有限命令及前后置条件；日志接收独立的不可变检查点。
     def initialize(plan:, change:, journal:, plan_sha256:, item: nil)
       @plan = CtxParser::Immutable.copy(plan)
-      unless @plan.is_a?(Hash) && @plan["device"].is_a?(Hash) &&
+      unless @plan.is_a?(Hash) && @plan["target"].is_a?(Hash) &&
           [ @plan["expected_config_sha256"], plan_sha256 ].all? { |value| value.is_a?(String) && /\A[0-9a-f]{64}\z/.match?(value) }
         raise ArgumentError, "Execution requires a verified plan and fingerprints"
       end
@@ -26,7 +26,7 @@ module CtxRunner
       end
       @commands.each { |command| CtxParser::Commands.command_text(command) }
       @change, @journal = change, journal
-      @state = { "schema_version" => Evidence::VERSION, "kind" => "execution", "status" => "confirmed", "device" => @plan["device"], "plan_sha256" => plan_sha256.dup.freeze,
+      @state = { "schema_version" => Evidence::VERSION, "kind" => "execution", "status" => "confirmed", "target" => @plan["target"], "plan_sha256" => plan_sha256.dup.freeze,
         "expected_config_sha256" => @plan["expected_config_sha256"], "commands" => @commands, "steps" => [] }
       @state["plan_item"] = CtxParser::Immutable.copy(item) if item
       @started = @used = @journal_failed = false

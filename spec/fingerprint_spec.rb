@@ -18,4 +18,11 @@ RSpec.describe CtxRunner::Fingerprint do
     expect { described_class.call(cycle) }.to raise_error(ArgumentError)
     expect { described_class.call(Object.new) }.to raise_error(ArgumentError)
   end
+
+  it "uses the document depth budget beyond the JSON default limit" do
+    value = 110.times.reduce("leaf") { |child, _| [ child ] }
+    expect(described_class.call(value)).to match(/\A[0-9a-f]{64}\z/)
+    value = 130.times.reduce("leaf") { |child, _| [ child ] }
+    expect { described_class.call(value) }.to raise_error(ArgumentError)
+  end
 end

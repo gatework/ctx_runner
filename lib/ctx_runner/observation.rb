@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "ctx_parser/immutable"
+require "ctx_driver/source"
 require "ctx_parser/values"
 require "time"
 
@@ -12,7 +13,7 @@ module CtxRunner
     def self.validate(name:, status:, records:, issues:, evidence:, statuses: STATUSES)
       raise ArgumentError, "Observation name must be a symbol" unless name.is_a?(Symbol)
       raise ArgumentError, "Invalid observation status" unless statuses.include?(status)
-      unless [ records, issues, evidence ].all? { |entries| entries.is_a?(Array) && entries.all? { |entry| entry.is_a?(Hash) } }
+      unless [ records, issues ].all? { |entries| entries.is_a?(Array) && entries.all? { |entry| entry.is_a?(Hash) } }
         raise ArgumentError, "Observation entries must be arrays of hashes"
       end
       if %i[failed unsupported not_requested not_applicable].include?(status) && records.any?
@@ -29,15 +30,19 @@ module CtxRunner
           (covered_scopes.empty? || %i[complete partial].include?(status))
         raise ArgumentError, "Covered scopes require available observations and unique hashes"
       end
-      if status == :not_applicable && evidence.empty?
+      raise ArgumentError, "Evidence must be a list of sources" unless evidence.is_a?(Array)
+      evidence = evidence.map { |entry| CtxDriver::Source.coerce(entry) }.freeze
+      if status == :not_applicable && !evidence.any?(&:verified?)
         raise ArgumentError, "Not applicable observations require evidence"
       end
-      @observed_at = evidence.filter_map { |entry| CtxParser::Values.timestamp(entry[:observed_at]) if entry.key?(:observed_at) }.max
+      @observed_at = evidence.filter_map(&:observed_at).max
       super(name: name, status: status, records: CtxParser::Immutable.copy(records),
-        issues: CtxParser::Immutable.copy(issues), evidence: CtxParser::Immutable.copy(evidence),
+        issues: CtxParser::Immutable.copy(issues), evidence: evidence,
         started_at: started_at&.getutc&.freeze, completed_at: completed_at&.getutc&.freeze,
         covered_scopes: CtxParser::Immutable.copy(covered_scopes))
     end
+
+    def to_h = super.merge(evidence: evidence.map(&:to_h))
 
     def complete? = status == :complete
     def partial? = status == :partial

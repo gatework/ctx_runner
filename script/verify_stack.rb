@@ -82,12 +82,12 @@ Dir.mktmpdir("gatework-install-") do |home|
       options = domain == Vxlan ? { fabric_key: "test" } : {}
       observation = domain::Observation.new(name: name, status: :complete)
       snapshot = domain::Snapshot.new(target: target, observations: { name => observation }, observed_at: Time.now.utc, **options)
-      device = { "host" => "192.0.2.1", "name" => "fixture" }
+      device = { "host" => "192.0.2.1", "name" => "fixture", "platform" => "cisco_nxos" }
       batch = CtxRunner::Batch.new(report: writer, progress: progress, requested: [ device ])
       result = batch.collect(device) { snapshot }
       abort "Domain snapshot cannot participate in Batch" unless result[:status] == :complete && result[:report_saved]
       abort "Synthetic collection observation" if snapshot.observations.key?(:collection)
-      document = CtxRunner::Evidence.wrap({ device: device, snapshot: snapshot }, kind: "collection")
+      document = CtxRunner::Evidence.wrap({ status: :complete, target: device, snapshot: snapshot }, kind: "collection")
       CtxRunner::Evidence.validate(document, names: snapshot.observations.keys) { }
     end
 
@@ -105,7 +105,7 @@ Dir.mktmpdir("gatework-install-") do |home|
     %w[vxlan wireless net-backup].each do |name|
       system(RbConfig.ruby, File.join(ENV.fetch("GEM_HOME"), "bin", name), "--help", exception: true)
     end
-    puts "Installed stack: dependency versions, domain Batch, schema 3, examples, CLI and real PTY passed"
+    puts "Installed stack: dependency versions, domain Batch, schema 4, examples, CLI and real PTY passed"
   RUBY
   manifest = File.join(output, "manifest.json")
   File.write(manifest, JSON.pretty_generate(artifacts) + "\n")

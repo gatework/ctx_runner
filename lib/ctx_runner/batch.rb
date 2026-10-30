@@ -3,6 +3,7 @@
 require "ctx_parser/immutable"
 require "ctx_driver/failure"
 require_relative "document"
+require_relative "target"
 
 module CtxRunner
   # 批量采集的交付账本；调度器负责并发与回收，领域块只返回设备快照。
@@ -73,26 +74,42 @@ module CtxRunner
     end
 
     def initialize(report:, progress:, requested:)
-      @requested = CtxParser::Immutable.copy(requested)
+      raise ArgumentError, "Requested targets must be a list" unless requested.is_a?(Array)
+      targets = requested.map { |value| Target.coerce(value) }
+      @identities = targets.to_h { |target| [ target.identity_key, true ] }.freeze
+      raise ArgumentError, "Duplicate requested target" unless targets.size == @identities.size
+      @requested = Document.call(targets)
+      @claimed = {}
       @report, @progress = report, progress
       @results, @lock = [], Mutex.new
     end
 
     # 先登记设备事实，再保存报告；报告失败仍可在最终摘要中定位未交付结果。
     def collect(device)
-      raise ArgumentError, "Batch is closed" if @closed
-      device = CtxParser::Immutable.copy(device)
+      identity = Target.coerce(device)
+      device = Document.call(identity)
+      @lock.synchronize do
+        raise ArgumentError, "Batch is closed" if @closed
+        unless @identities.key?(identity.identity_key) && !@claimed.key?(identity.identity_key)
+          raise ArgumentError, "Target must be requested exactly once"
+        end
+        @claimed[identity.identity_key] = true
+      end
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @progress.start(device)
       snapshot = nil
       begin
         snapshot = yield
+        unless snapshot.respond_to?(:target) && identity.same_identity?(snapshot.target)
+          snapshot = nil
+          raise ArgumentError, "Snapshot identity differs from the requested target"
+        end
         dimensions = snapshot.observations.transform_values do |value|
           { status: value.status, records: value.records.size, issues: value.issues.map { |issue| issue[:code] }.uniq }
         end
-        result = { device: device, status: snapshot.collection_status, dimensions: dimensions }
+        result = { target: device, status: snapshot.collection_status, dimensions: dimensions }
       rescue StandardError => error
-        result = { device: device, status: :failed, error: CtxDriver::Failure.code(error, :collection_failed), dimensions: {} }
+        result = { target: device, status: :failed, error: CtxDriver::Failure.code(error, :collection_failed), dimensions: {} }
       end
       result[:duration_ms] = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
       result[:report_saved] = false
@@ -105,7 +122,7 @@ module CtxRunner
     end
 
     def results
-      @lock.synchronize { CtxParser::Immutable.copy(@results).sort_by { |result| result[:device].fetch("host") }.freeze }
+      @lock.synchronize { CtxParser::Immutable.copy(@results).sort_by { |result| result[:target].fetch("host") }.freeze }
     end
 
     # 调度器回收后调用；输出诊断只补写报告，绝不重新执行设备操作。

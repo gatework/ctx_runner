@@ -9,12 +9,26 @@ RSpec.describe CtxRunner::Batch do
   let(:progress) { double(start: nil, result: nil, finish: nil, output_error: nil) }
   let(:batch) { described_class.new(report: report, progress: progress, requested: [ device ]) }
 
+  it "rejects duplicate requests and repeated or unrequested collection before running a callback" do
+    expect { described_class.new(report: report, progress: progress, requested: [ device, device ]) }.to raise_error(ArgumentError)
+    expect { batch.collect(device.merge("host" => "192.0.2.2")) { raise "must not run" } }.to raise_error(ArgumentError)
+    batch.collect(device) { nil }
+    expect { batch.collect(device) { raise "must not run" } }.to raise_error(ArgumentError)
+    expect(batch.results.size).to eq(1)
+  end
+
+  it "withholds mismatched snapshot facts from the report" do
+    snapshot = Struct.new(:target).new(CtxRunner::Target.new(host: "192.0.2.2"))
+    expect(report).to receive(:write).with(hash_including(status: :failed), snapshot: nil)
+    expect(batch.collect(device) { snapshot }).to include(status: :failed, dimensions: {})
+  end
+
   it "retains collected facts when evidence publication fails" do
     allow(report).to receive(:write).and_raise(IOError)
     observation = Struct.new(:status, :records, :issues).new(:complete, [ { name: "test" } ], [])
-    snapshot = Struct.new(:observations, :collection_status).new({ interfaces: observation }, :complete)
+    snapshot = Struct.new(:target, :observations, :collection_status).new(CtxRunner::Target.coerce(device), { interfaces: observation }, :complete)
     expect { batch.collect(device) { snapshot } }.to raise_error(IOError)
-    expect(batch.results).to contain_exactly(include(device: device, status: :complete, report_saved: false,
+    expect(batch.results).to contain_exactly(include(target: device, status: :complete, report_saved: false,
       dimensions: { interfaces: { status: :complete, records: 1, issues: [] } }))
   end
 
@@ -24,9 +38,9 @@ RSpec.describe CtxRunner::Batch do
     result = batch.collect(device) { raise ArgumentError, "private" }
     expect(result).to include(status: :failed, error: :collection_failed, report_saved: true)
     expect(result.to_s).not_to include("private")
-    expect(delivered).to include("device" => { "host" => "192.0.2.1" }, "status" => "failed",
+    expect(delivered).to include("target" => { "host" => "192.0.2.1" }, "status" => "failed",
       "error" => "collection_failed", "report_saved" => true)
-    expect { delivered.fetch("device")["host"] = "changed" }.to raise_error(FrozenError)
+    expect { delivered.fetch("target")["host"] = "changed" }.to raise_error(FrozenError)
   end
 
   it "updates final output failures without repeating collection" do

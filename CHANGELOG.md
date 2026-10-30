@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.5.0 (2026-10-30)
+
+- Adopt immutable `Target` identity values and typed observation sources; share `records(name)` and configuration session behavior. Schema 4 uses `target`, validates aggregate status and full identity, and rejects empty applicability proof. Reject duplicate/unrequested batch work and mismatched returned snapshots. Align fingerprint depth with Document.
+
 ## 0.4.0 (2026-10-29)
 
 - Add composed Snapshot and public Target contracts, independent collection status, and typed UTC times. Empty requests remain not_requested.

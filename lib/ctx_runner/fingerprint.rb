@@ -7,7 +7,7 @@ require "ctx_parser/immutable"
 module CtxRunner
   # 配置映射顺序不影响身份；列表顺序和全部字段仍参与旧版摘要协议。
   module Fingerprint
-    def self.call(value) = Digest::SHA256.hexdigest(JSON.generate(canonical(value)))
+    def self.call(value) = Digest::SHA256.hexdigest(JSON.generate(canonical(value), max_nesting: false))
 
     # 先拒绝非纯数据与循环，再将键归一化；重名键不能静默覆盖来源事实。
     def self.canonical(value)

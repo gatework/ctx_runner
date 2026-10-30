@@ -9,7 +9,7 @@ require_relative "snapshot"
 module CtxRunner
   # 离线证据的公共外壳；记录字段和领域语义交给消费模块校验。
   module Evidence
-    VERSION = 3
+    VERSION = 4
     KINDS = %w[collection batch change_plan change execution review recommendations fabric_review].freeze
 
     def self.wrap(value, kind:)
@@ -33,8 +33,9 @@ module CtxRunner
       selected = document["changes"].fetch(item)
       validate_version!(selected, kind: "change")
       raise ArgumentError, "Change platform differs from its plan" unless selected["platform"] == platform
-      identity = Target.snapshot(selected.fetch("device"))
-      host = identity.fetch(:host)
+      identity = Target.coerce(selected.fetch("target"))
+      raise ArgumentError, "Change target platform differs from its plan" unless identity.platform == platform
+      host = identity.host
       unless !host.include?("/") && IPAddr.new(host).to_s == host &&
           selected["expected_config_sha256"].is_a?(String) && selected["expected_config_sha256"].match?(/\A[0-9a-f]{64}\z/)
         raise ArgumentError, "Invalid change target or configuration fingerprint"
@@ -44,15 +45,18 @@ module CtxRunner
 
     def self.validate(document, names:)
       validate_version!(document, kind: "collection")
-      unless document.is_a?(Hash) && document["device"].is_a?(Hash) &&
-          %w[name host].all? { |key| document["device"][key].is_a?(String) && !document["device"][key].empty? }
+      unless document.is_a?(Hash) && document["target"].is_a?(Hash) &&
+          %w[name host].all? { |key| document["target"][key].is_a?(String) && !document["target"][key].empty? }
         raise ArgumentError, "Device identity is missing"
       end
-      host = document["device"]["host"]
-      Target.snapshot(document["device"])
+      host = document["target"]["host"]
+      Target.coerce(document["target"])
       raise ArgumentError, "Target address must be a canonical host address" unless !host.include?("/") && IPAddr.new(host).to_s == host
       snapshot = document.fetch("snapshot")
-      return if snapshot.nil?
+      if snapshot.nil?
+        raise ArgumentError, "Missing snapshots cannot claim successful collection" unless document["status"] == "failed"
+        return
+      end
       unless snapshot.is_a?(Hash) && snapshot["observations"].is_a?(Hash) &&
           %w[complete partial failed not_requested].include?(snapshot["collection_status"])
         raise ArgumentError, "Invalid snapshot structure"
@@ -60,9 +64,9 @@ module CtxRunner
       if !snapshot["target"].is_a?(Hash) || snapshot["target"]["host"] != host
         raise ArgumentError, "Device identity does not match the collection target"
       end
-      identity = Target.snapshot(snapshot["target"])
+      identity = Target.coerce(snapshot["target"])
       %w[platform id].each do |field|
-        if document["device"].key?(field) && snapshot["target"].key?(field) && document["device"][field] != snapshot["target"][field]
+        if document["target"][field] != snapshot["target"][field]
           raise ArgumentError, "Device identity does not match the collection target"
         end
       end
@@ -73,7 +77,7 @@ module CtxRunner
         end
         records = array(observation.fetch("records"))
         value = Observation.new(name: dimension.to_sym, status: observation["status"].to_sym, records: records,
-          issues: array(observation.fetch("issues", [])), evidence: array(observation.fetch("evidence", [])).map { |entry| entry.transform_keys(&:to_sym) },
+          issues: array(observation.fetch("issues", [])), evidence: array(observation.fetch("evidence", [])),
           covered_scopes: array(observation.fetch("covered_scopes", [])),
           started_at: observation["started_at"] && CtxParser::Values.timestamp(observation["started_at"]),
           completed_at: observation["completed_at"] && CtxParser::Values.timestamp(observation["completed_at"]))
@@ -82,7 +86,7 @@ module CtxRunner
       end
       value = Snapshot.new(target: identity, observations: observations, names: names,
         observed_at: CtxParser::Values.timestamp(snapshot.fetch("observed_at")), issues: array(snapshot.fetch("issues", [])))
-      unless value.collection_status.to_s == snapshot["collection_status"]
+      unless value.collection_status.to_s == snapshot["collection_status"] && document["status"] == snapshot["collection_status"]
         raise ArgumentError, "Collection status differs from its evidence"
       end
     end

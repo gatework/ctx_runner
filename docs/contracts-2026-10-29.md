@@ -1,5 +1,7 @@
 # 九模块契约与迁移
 
+> Historical schema 3 review. Current contracts and migration: [2026-10-30](contracts-2026-10-30.md).
+
 此次改动以实际调用链和既有故障测试为依据。保持九个 gem，不新增公共工具 gem；厂商语法、AP 租约、Fabric 范围及健康规则仍由对应领域维护。
 
 ## 质量审查结论
